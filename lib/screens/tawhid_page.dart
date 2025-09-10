@@ -6,6 +6,7 @@ import 'package:_3ilm_nafi3/screens/video_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
+import 'package:_3ilm_nafi3/services/video_event_service.dart';
 
 import '../models/video.dart';
 
@@ -51,12 +52,45 @@ class _TawhidPageState extends State<TawhidPage> {
       },
     );
   }
-  late Future<List<Video>> videosFuture;
+  List<Video> localVideos = [];
+  late final ValueNotifier<Map<String, dynamic>> videoAddedNotifier;
 
   @override
   void initState() {
     super.initState();
-    videosFuture = fetchVideos("");
+    videoAddedNotifier = ValueNotifier({});
+    videoAddedNotifier = VideoEventService().videoAddedNotifier;
+    videoAddedNotifier.addListener(_onVideoAdded);
+  }
+
+  @override
+  void dispose() {
+    videoAddedNotifier.removeListener(_onVideoAdded);
+    super.dispose();
+  }
+
+  void _onVideoAdded() {
+    final data = videoAddedNotifier.value;
+    if (data.isEmpty) return;
+    // Vérifie si la vidéo concerne Tawhid
+    if ((data['themes'] as List).contains('92a89d9e-ebf2-4ed3-9ce4-03d06f7a6690')) {
+      setState(() {
+        localVideos.add(
+          Video(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: data['title'] ?? '',
+            imageUrl: data['imageUrl'],
+            likesCount: 0,
+            videoUrl: data['videoUrl'],
+            uploader: {},
+            ref: data['ref'],
+            isValid: false,
+            themes: [],
+            subcategories: List<String>.from(data['subcategories'] ?? []),
+          ),
+        );
+      });
+    }
   }
 
   Future<List<Video>> fetchVideos(String themeId) async {
@@ -165,109 +199,88 @@ class _TawhidPageState extends State<TawhidPage> {
                     Expanded(
                       child: Container(
                         color: Colors.white,
-                        child: FutureBuilder<List<Video>>(
-                          future: videosFuture,
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return Center(
-                                child: CircularProgressIndicator(color: green),
-                              );
-                            } else if (snapshot.hasError) {
-                              return Center(
-                                child: Text("Veuillez vérifier votre connection et réessayez plus tard."),
-                              );
-                            } else if (!snapshot.hasData ||
-                                snapshot.data!.isEmpty) {
-                              return Center(
-                                child: Text("Aucune vidéo trouvée."),
-                              );
-                            }
-
-                            final videos = snapshot.data!;
-
-                            return GridView.builder(
-                              padding: const EdgeInsets.only(
-                                left: 10,
-                                right: 10,
-                                bottom: 10,
-                                top: 50,
+                        child: localVideos.isEmpty
+                            ? Center(child: Text("Aucune vidéo trouvée."))
+                            : GridView.builder(
+                                padding: const EdgeInsets.only(
+                                  left: 10,
+                                  right: 10,
+                                  bottom: 10,
+                                  top: 50,
+                                ),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: 15,
+                                      crossAxisSpacing: 15,
+                                      childAspectRatio: 0.8,
+                                    ),
+                                itemCount: localVideos.length,
+                                itemBuilder: (context, index) {
+                                  final video = localVideos[index];
+                                  return GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => VideoPage(
+                                            videoId: video.id,
+                                            videoUrl: video.videoUrl,
+                                            title: video.title,
+                                            uploader: Uploader(
+                                              id: video.uploader['id'] ?? '',
+                                              isAdmin: false,
+                                              username: video.uploader['username'] ?? '',
+                                              email: "test",
+                                              profilePic: video.uploader['username'] ?? '',
+                                            ),
+                                            likeCount: video.likesCount,
+                                            refr: video.ref,
+                                            playlist: localVideos,
+                                            initialIndex: index,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Column(
+                                      children: [
+                                        Expanded(
+                                          child: AspectRatio(
+                                            aspectRatio: 9 / 16,
+                                            child: Image.network(
+                                              video.imageUrl ?? '',
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(height: 6),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.favorite_border,
+                                              size: 18,
+                                              color: Colors.red,
+                                            ),
+                                            SizedBox(width: 4),
+                                            Text(video.likesCount.toString()),
+                                          ],
+                                        ),
+                                        SizedBox(height: 6),
+                                        ElevatedButton.icon(
+                                          icon: Icon(Icons.share),
+                                          label: Text('Partager'),
+                                          onPressed: () {
+                                            _shareVideo(video.title);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    mainAxisSpacing: 15,
-                                    crossAxisSpacing: 15,
-                                    childAspectRatio: 0.8,
-                                  ),
-                              itemCount: videos.length,
-                              itemBuilder: (context, index) {
-                                final video = videos[index];
-                                return GestureDetector(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => VideoPage(
-                                          videoId: video.id,
-                                          videoUrl: video.videoUrl,
-                                          title: video.title,
-                                          uploader: Uploader(
-                                            id: video.uploader['id'],
-                                            isAdmin: false,
-                                            username: video.uploader['username'].split(";")[0],
-                                            email: "test",
-                                            profilePic: video.uploader['username'].split(";")[2],
-                                          ),
-                                          likeCount: video.likesCount,
-                                          refr: video.ref,
-                                          playlist: videos,
-                                          initialIndex: index,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  child: Column(
-                                    children: [
-                                      Expanded(
-                                        child: AspectRatio(
-                                          aspectRatio: 9 / 16,
-                                          child: Image.network(
-                                            video.imageUrl ?? '',
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(height: 6),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.favorite_border,
-                                            size: 18,
-                                            color: Colors.red,
-                                          ),
-                                          SizedBox(width: 4),
-                                          Text(video.likesCount.toString()),
-                                        ],
-                                      ),
-                                      SizedBox(height: 6),
-                                      ElevatedButton.icon(
-                                        icon: Icon(Icons.share),
-                                        label: Text('Partager'),
-                                        onPressed: () {
-                                          _shareVideo(video.title);
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
                       ),
                     ),
                   ],
